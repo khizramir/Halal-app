@@ -1,29 +1,31 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import BottomNav from './components/BottomNav'
-import ErrorBoundary from './components/ErrorBoundary'
+import { Route, Routes } from 'react-router-dom'
+import Layout from './components/Layout'
 import Home from './pages/Home'
-import Scanner from './pages/Scanner'
+import PrayerTimes from './pages/PrayerTimes'
+import Qibla from './pages/Qibla'
 import Restaurants from './pages/Restaurants'
-import Lifestyle from './pages/Lifestyle'
+import Scanner from './pages/Scanner'
+import Calendar from './pages/Calendar'
+import Adhkar from './pages/Adhkar'
 import Zakat from './pages/Zakat'
-import Profile from './pages/Profile'
+import Submit from './pages/Submit'
 
-export default function App() {
+function App() {
   return (
-    <BrowserRouter>
-      <ErrorBoundary>
-        <div className="min-h-screen bg-background pb-20">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/scan" element={<Scanner />} />
-            <Route path="/restaurants" element={<Restaurants />} />
-            <Route path="/lifestyle" element={<Lifestyle />} />
-            <Route path="/zakat" element={<Zakat />} />
-            <Route path="/profile" element={<Profile />} />
-          </Routes>
-          <BottomNav />
-        </div>
-      </ErrorBoundary>
-    </BrowserRouter>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Home />} />
+        <Route path="prayer-times" element={<PrayerTimes />} />
+        <Route path="qibla" element={<Qibla />} />
+        <Route path="restaurants" element={<Restaurants />} />
+        <Route path="scanner" element={<Scanner />} />
+        <Route path="calendar" element={<Calendar />} />
+        <Route path="adhkar" element={<Adhkar />} />
+        <Route path="zakat" element={<Zakat />} />
+        <Route path="submit" element={<Submit />} />
+      </Route>
+    </Routes>
   )
 }
+
+export default App
