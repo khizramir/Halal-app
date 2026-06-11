@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-
 const PrayerCountdown: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState<string>('--:--:--');
   const [nextPrayer, setNextPrayer] = useState<string>('...');
