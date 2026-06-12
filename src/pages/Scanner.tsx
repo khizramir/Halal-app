@@ -266,11 +266,11 @@ export default function Scanner() {
           <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-4">
             <div className="flex items-start gap-3">
               {product.imageUrl && (
-                <img src={product.imageUrl} alt={product.name} className="w-16 h-16 object-contain rounded-xl border" />
+                <img src={product.imageUrl} alt={product.productName} className="w-16 h-16 object-contain rounded-xl border" />
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm leading-tight">{product.name}</p>
-                {product.brand && <p className="text-xs text-gray-500 mt-0.5">{product.brand}</p>}
+                <p className="font-semibold text-gray-900 text-sm leading-tight">{product.productName}</p>
+                {product.brands && <p className="text-xs text-gray-500 mt-0.5">{product.brands}</p>}
               </div>
             </div>
 
@@ -302,16 +302,6 @@ export default function Scanner() {
               </div>
             )}
 
-            {product.openFoodFactsUrl && (
-              <a
-                href={product.openFoodFactsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-center text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                View on Open Food Facts →
-              </a>
-            )}
           </div>
         )}
       </div>
