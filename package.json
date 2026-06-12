@@ -17,8 +17,6 @@
           "@auth/express": "^0.12.2",
           "@neondatabase/serverless": "^1.1.0",
           "@tailwindcss/vite": "^4.3.0",
-          "@zxing/browser": "^0.1.5",
-          "@zxing/library": "^0.21.3",
           "dotenv": "^17.4.2",
           "drizzle-orm": "^0.45.2",
           "express": "^5.2.1",
