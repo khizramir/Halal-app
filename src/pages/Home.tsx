@@ -6,7 +6,8 @@ import { formatCountdown, getNextPrayer } from '../lib/prayer'
 import { getHijriDate, findNextHijriOccurrence } from '../lib/hijri'
 import { useSession } from '../lib/auth'
 import { useAppProfile } from '../lib/useAppProfile'
-import { getScanHistory } from '../lib/api'
+import { getScanHistory, getTrendingProducts, type TrendingProduct } from '../lib/api'
+import { DIETARY_REQUIREMENTS } from '../types'
 import type { ScanHistoryEntry } from '../types'
 import { restaurants as fallbackRestaurants } from '../data/restaurants'
 
@@ -17,6 +18,8 @@ const features = [
   { to: '/qibla', icon: '🧭', label: 'Qibla Compass', desc: 'Find the direction to Makkah' },
   { to: '/scanner', icon: '📷', label: 'Halal Scanner', desc: 'Check products by barcode' },
   { to: '/restaurants', icon: '🍽️', label: 'Restaurant Finder', desc: 'Halal eats near you' },
+  { to: '/shop', icon: '🛒', label: 'Shop Groceries', desc: 'Smart halal basket builder' },
+  { to: '/meals', icon: '🍲', label: 'Meal Planner', desc: 'AI weekly meal plans' },
   { to: '/calendar', icon: '🌙', label: 'Islamic Calendar', desc: 'Hijri date & upcoming events' },
   { to: '/adhkar', icon: '📿', label: 'Adhkar', desc: 'Daily remembrance & counter' },
   { to: '/zakat', icon: '🧮', label: 'Zakat Calculator', desc: 'Calculate your Zakat' },
@@ -30,6 +33,7 @@ export default function Home() {
   const [data, setData] = useState<TimingsResponse | null>(null)
   const [now, setNow] = useState(new Date())
   const [recentScans, setRecentScans] = useState<ScanHistoryEntry[]>([])
+  const [trending, setTrending] = useState<TrendingProduct[]>([])
   const hijri = getHijriDate()
 
   useEffect(() => {
@@ -44,8 +48,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!session?.user) return
-    getScanHistory().then((rows) => setRecentScans((rows ?? []).slice(0, 3)))
+    getScanHistory().then((rows) => setRecentScans((rows ?? []).slice(0, 5)))
   }, [session?.user])
+
+  useEffect(() => {
+    getTrendingProducts().then((rows) => setTrending(rows ?? []))
+  }, [])
 
   const next = data ? getNextPrayer(data.timings, now) : null
 
@@ -71,6 +79,20 @@ export default function Home() {
         </p>
       </div>
 
+      {profile.dietaryRequirements.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {profile.dietaryRequirements.map((id) => {
+            const req = DIETARY_REQUIREMENTS.find((d) => d.id === id)
+            if (!req) return null
+            return (
+              <span key={id} className="rounded-full bg-emerald/10 px-3 py-1 text-xs font-medium text-emerald">
+                {req.label}
+              </span>
+            )
+          })}
+        </div>
+      )}
+
       <div className="rounded-xl bg-emerald-deep p-4 text-white shadow">
         {next ? (
           <div>
@@ -81,6 +103,13 @@ export default function Home() {
           <p className="text-sm opacity-80">Loading prayer times…</p>
         )}
       </div>
+
+      <Link
+        to="/scanner"
+        className="flex items-center justify-center gap-2 rounded-xl bg-emerald py-4 text-base font-semibold text-white shadow"
+      >
+        📷 Quick Scan
+      </Link>
 
       {showRamadanMode && data && (
         <div className="rounded-xl border border-emerald-deep/20 bg-white p-4 shadow">
@@ -129,13 +158,34 @@ export default function Home() {
       {recentScans.length > 0 && (
         <div className="rounded-xl bg-white p-4 shadow">
           <h3 className="font-semibold text-emerald-deep">Continue where you left off</h3>
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
             {recentScans.map((s) => (
-              <Link key={s.id} to="/scanner" className="block rounded-lg bg-cream p-2 text-sm">
-                <span className="font-medium text-emerald-deep">{s.productName}</span>
-                {s.brand && <span className="text-gray-500"> · {s.brand}</span>}
-                <span className="ml-2 text-xs uppercase text-gray-400">{s.resultStatus}</span>
+              <Link
+                key={s.id}
+                to="/scanner"
+                className="flex-shrink-0 rounded-lg bg-cream p-2 text-sm min-w-[140px]"
+              >
+                <span className="block font-medium text-emerald-deep">{s.productName}</span>
+                {s.brand && <span className="text-gray-500">{s.brand}</span>}
+                <span className="block text-xs uppercase text-gray-400">{s.resultStatus}</span>
               </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {trending.length > 0 && (
+        <div className="rounded-xl bg-white p-4 shadow">
+          <h3 className="font-semibold text-emerald-deep">Trending halal products this week</h3>
+          <div className="mt-2 space-y-2">
+            {trending.map((t) => (
+              <div key={`${t.productName}-${t.brand}`} className="flex items-center justify-between rounded-lg bg-cream p-2 text-sm">
+                <div>
+                  <span className="font-medium text-emerald-deep">{t.productName}</span>
+                  {t.brand && <span className="text-gray-500"> · {t.brand}</span>}
+                </div>
+                <span className="text-xs uppercase text-gray-400">{t.resultStatus}</span>
+              </div>
             ))}
           </div>
         </div>

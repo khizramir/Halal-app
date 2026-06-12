@@ -65,12 +65,21 @@ export const SCHOOLS_OF_THOUGHT = [
   { id: 'general', label: 'General / Not sure' },
 ] as const
 
+export const USAGE_PURPOSES = [
+  { id: 'check_halal', label: 'Check if products are halal when shopping' },
+  { id: 'find_restaurants', label: 'Find halal restaurants near me' },
+  { id: 'meal_planning', label: 'Plan my weekly meals' },
+  { id: 'prayer_times', label: 'Prayer times and Islamic calendar' },
+  { id: 'all', label: 'All of the above' },
+] as const
+
 export interface UserProfile {
   id: string
   userId: string
   dietaryRequirements: string[]
   city: string | null
   schoolOfThought: string | null
+  usagePurposes: string[]
   onboardingComplete: boolean
   notificationsEnabled: boolean
   createdAt: string
@@ -95,6 +104,41 @@ export interface SavedItem {
   itemName: string
   itemData: Record<string, unknown> | null
   savedAt: string
+}
+
+export interface ShopProduct {
+  sku: string
+  name: string
+  brand: string | null
+  price: number | null
+  unit: string | null
+  image: string | null
+  url: string
+  badges: string[]
+}
+
+export interface BasketGroup {
+  ingredient: string
+  query: string
+  products: ShopProduct[]
+}
+
+export interface BasketResult {
+  groups: BasketGroup[]
+  estimatedTotal: number
+}
+
+export interface MealSuggestion {
+  name: string
+  cuisine: string
+  ingredients: string[]
+  estimated_cost_aud: number
+  cook_time_minutes: number
+}
+
+export interface MealPlanResult {
+  meals: MealSuggestion[]
+  shoppingList: string[]
 }
 
 export const FEEDBACK_CATEGORIES = [

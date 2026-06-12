@@ -5,6 +5,7 @@ export interface GuestOnboarding {
   dietaryRequirements: string[]
   city: string | null
   schoolOfThought: string | null
+  usagePurposes: string[]
   complete: boolean
 }
 
@@ -18,13 +19,21 @@ export function incrementGuestScanCount(): number {
   return next
 }
 
+const DEFAULT_GUEST_ONBOARDING: GuestOnboarding = {
+  dietaryRequirements: [],
+  city: null,
+  schoolOfThought: null,
+  usagePurposes: [],
+  complete: false,
+}
+
 export function getGuestOnboarding(): GuestOnboarding {
   try {
     const raw = localStorage.getItem(ONBOARDING_KEY)
-    if (!raw) return { dietaryRequirements: [], city: null, schoolOfThought: null, complete: false }
-    return JSON.parse(raw) as GuestOnboarding
+    if (!raw) return { ...DEFAULT_GUEST_ONBOARDING }
+    return { ...DEFAULT_GUEST_ONBOARDING, ...(JSON.parse(raw) as Partial<GuestOnboarding>) }
   } catch {
-    return { dietaryRequirements: [], city: null, schoolOfThought: null, complete: false }
+    return { ...DEFAULT_GUEST_ONBOARDING }
   }
 }
 

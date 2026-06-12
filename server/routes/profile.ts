@@ -28,10 +28,11 @@ profileRouter.put('/', async (req, res) => {
     return
   }
 
-  const { dietaryRequirements, city, schoolOfThought, onboardingComplete, notificationsEnabled } = req.body as {
+  const { dietaryRequirements, city, schoolOfThought, usagePurposes, onboardingComplete, notificationsEnabled } = req.body as {
     dietaryRequirements?: string[]
     city?: string | null
     schoolOfThought?: string | null
+    usagePurposes?: string[]
     onboardingComplete?: boolean
     notificationsEnabled?: boolean
   }
@@ -45,6 +46,7 @@ profileRouter.put('/', async (req, res) => {
     ...(dietaryRequirements !== undefined ? { dietaryRequirements } : {}),
     ...(city !== undefined ? { city } : {}),
     ...(schoolOfThought !== undefined ? { schoolOfThought } : {}),
+    ...(usagePurposes !== undefined ? { usagePurposes } : {}),
     ...(onboardingComplete !== undefined ? { onboardingComplete } : {}),
     ...(notificationsEnabled !== undefined ? { notificationsEnabled } : {}),
   }

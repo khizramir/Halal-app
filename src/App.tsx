@@ -10,6 +10,9 @@ import Adhkar from './pages/Adhkar'
 import Zakat from './pages/Zakat'
 import Submit from './pages/Submit'
 import Profile from './pages/Profile'
+import Settings from './pages/Settings'
+import Shop from './pages/Shop'
+import Meals from './pages/Meals'
 import Login from './pages/Login'
 import Onboarding from './components/Onboarding'
 import { useAppProfile } from './lib/useAppProfile'
@@ -29,6 +32,7 @@ function App() {
         initialDietary={profile.dietaryRequirements}
         initialCity={profile.city}
         initialSchool={profile.schoolOfThought}
+        initialUsagePurposes={profile.usagePurposes}
         onComplete={profile.completeOnboarding}
       />
     )
@@ -47,6 +51,9 @@ function App() {
         <Route path="zakat" element={<Zakat />} />
         <Route path="submit" element={<Submit />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="shop" element={<Shop />} />
+        <Route path="meals" element={<Meals />} />
       </Route>
     </Routes>
   )
