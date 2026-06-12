@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { restaurants as fallbackRestaurants, cities, certifiers } from '../data/restaurants'
 import type { Restaurant } from '../types'
+import { useSession } from '../lib/auth'
+import { getSavedItems, removeSavedItem, saveItem } from '../lib/api'
+import { FeedbackModal } from '../components/FeedbackWidget'
 
 export default function Restaurants() {
+  const { session } = useSession()
   const [city, setCity] = useState<(typeof cities)[number]>('All')
   const [certifier, setCertifier] = useState<(typeof certifiers)[number]>('All')
   const [familyFriendlyOnly, setFamilyFriendlyOnly] = useState(false)
   const [prayerSpaceOnly, setPrayerSpaceOnly] = useState(false)
   const [restaurants, setRestaurants] = useState<Restaurant[]>(fallbackRestaurants)
+  const [savedMap, setSavedMap] = useState<Record<string, string>>({}) // referenceId -> savedItem id
+  const [reportTarget, setReportTarget] = useState<Restaurant | null>(null)
 
   useEffect(() => {
     fetch('/api/restaurants')
@@ -19,6 +25,33 @@ export default function Restaurants() {
         // Keep the bundled fallback list if the API is unavailable.
       })
   }, [])
+
+  useEffect(() => {
+    if (!session?.user) return
+    getSavedItems().then((rows) => {
+      const map: Record<string, string> = {}
+      for (const r of rows ?? []) {
+        if (r.itemType === 'restaurant') map[r.referenceId] = r.id
+      }
+      setSavedMap(map)
+    })
+  }, [session?.user])
+
+  const toggleSave = async (r: Restaurant) => {
+    if (!session?.user) return
+    const existingId = savedMap[r.id]
+    if (existingId) {
+      await removeSavedItem(existingId)
+      setSavedMap((prev) => {
+        const next = { ...prev }
+        delete next[r.id]
+        return next
+      })
+    } else {
+      const created = await saveItem({ itemType: 'restaurant', referenceId: r.id, itemName: r.name, itemData: r })
+      if (created) setSavedMap((prev) => ({ ...prev, [r.id]: created.id }))
+    }
+  }
 
   const filtered = useMemo(() => {
     return restaurants.filter((r) => {
@@ -89,14 +122,26 @@ export default function Restaurants() {
                 <h3 className="font-semibold text-emerald-deep">{r.name}</h3>
                 <p className="text-sm text-gray-500">{r.cuisine}</p>
               </div>
-              <span className="rounded-full bg-emerald/10 px-2 py-0.5 text-xs font-medium text-emerald">
-                {r.certifier}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald/10 px-2 py-0.5 text-xs font-medium text-emerald">
+                  {r.certifier}
+                </span>
+                {session?.user && (
+                  <button onClick={() => toggleSave(r)} className="text-xl" aria-label="Save restaurant">
+                    {savedMap[r.id] ? '🔖' : '📑'}
+                  </button>
+                )}
+              </div>
             </div>
             <p className="mt-2 text-sm text-gray-600">{r.address}</p>
-            <div className="mt-2 flex gap-2 text-xs text-gray-500">
-              {r.familyFriendly && <span>👨‍👩‍👧 Family-friendly</span>}
-              {r.prayerSpace && <span>🕌 Prayer space</span>}
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <div className="flex gap-2">
+                {r.familyFriendly && <span>👨‍👩‍👧 Family-friendly</span>}
+                {r.prayerSpace && <span>🕌 Prayer space</span>}
+              </div>
+              <button onClick={() => setReportTarget(r)} className="text-gray-400 underline">
+                Report an issue
+              </button>
             </div>
           </div>
         ))}
@@ -104,6 +149,14 @@ export default function Restaurants() {
           <p className="text-center text-gray-400">No restaurants match these filters.</p>
         )}
       </div>
+
+      {reportTarget && (
+        <FeedbackModal
+          initialCategory="wrong_info"
+          prefillMessage={`Issue with ${reportTarget.name} (${reportTarget.suburb}, ${reportTarget.city}): `}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
     </div>
   )
 }

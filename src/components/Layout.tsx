@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import AuthButton from './AuthButton'
+import FeedbackWidget from './FeedbackWidget'
 
 const navItems = [
   { to: '/', label: 'Home', icon: '🏠', end: true },
@@ -7,6 +8,7 @@ const navItems = [
   { to: '/qibla', label: 'Qibla', icon: '🧭' },
   { to: '/restaurants', label: 'Eat', icon: '🍽️' },
   { to: '/scanner', label: 'Scan', icon: '📷' },
+  { to: '/profile', label: 'Profile', icon: '👤' },
 ]
 
 export default function Layout() {
@@ -20,6 +22,8 @@ export default function Layout() {
       <main className="flex-1 px-4 pb-24 pt-4">
         <Outlet />
       </main>
+
+      <FeedbackWidget />
 
       <nav className="fixed bottom-0 left-0 right-0 z-10 flex border-t border-emerald-deep/10 bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.05)]">
         {navItems.map((item) => (
