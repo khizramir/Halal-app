@@ -1,4 +1,4 @@
-import type { SavedItem, ScanHistoryEntry, UserProfile } from '../types'
+import type { BasketResult, MealPlanResult, SavedItem, ScanHistoryEntry, ShopProduct, UserProfile } from '../types'
 
 async function request<T>(url: string, options?: RequestInit): Promise<T | null> {
   const res = await fetch(url, {
@@ -56,6 +56,37 @@ export function saveItem(item: {
 
 export function removeSavedItem(id: string) {
   return request<null>(`/api/saved-items/${id}`, { method: 'DELETE' })
+}
+
+export interface TrendingProduct {
+  productName: string
+  brand: string | null
+  resultStatus: string
+  count: number
+}
+
+export function getTrendingProducts() {
+  return request<TrendingProduct[]>('/api/scan-history/trending')
+}
+
+export function searchShop(query: string, dietaryRequirements: string[] = []) {
+  const params = new URLSearchParams({ q: query })
+  if (dietaryRequirements.length) params.set('dietary', dietaryRequirements.join(','))
+  return request<{ products: ShopProduct[] }>(`/api/shop/search?${params.toString()}`)
+}
+
+export function buildBasket(request_: string, dietaryRequirements: string[] = []) {
+  return request<BasketResult>('/api/shop/basket', {
+    method: 'POST',
+    body: JSON.stringify({ request: request_, dietaryRequirements }),
+  })
+}
+
+export function getMealPlan(request_: string, dietaryRequirements: string[] = []) {
+  return request<MealPlanResult>('/api/meal-plan', {
+    method: 'POST',
+    body: JSON.stringify({ request: request_, dietaryRequirements }),
+  })
 }
 
 export function submitFeedback(payload: {

@@ -1,37 +1,48 @@
 import { useState } from 'react'
-import { AUSTRALIAN_CITIES, DIETARY_REQUIREMENTS, SCHOOLS_OF_THOUGHT } from '../types'
+import { AUSTRALIAN_CITIES, DIETARY_REQUIREMENTS, SCHOOLS_OF_THOUGHT, USAGE_PURPOSES } from '../types'
+import type { OnboardingData } from '../lib/useAppProfile'
 
 interface OnboardingProps {
   initialDietary?: string[]
   initialCity?: string | null
   initialSchool?: string | null
-  onComplete: (data: { dietaryRequirements: string[]; city: string | null; schoolOfThought: string | null }) => void
+  initialUsagePurposes?: string[]
+  onComplete: (data: OnboardingData) => void
 }
 
-export default function Onboarding({ initialDietary, initialCity, initialSchool, onComplete }: OnboardingProps) {
+export default function Onboarding({ initialDietary, initialCity, initialSchool, initialUsagePurposes, onComplete }: OnboardingProps) {
   const [step, setStep] = useState(1)
   const [dietary, setDietary] = useState<string[]>(initialDietary ?? [])
   const [city, setCity] = useState<string | null>(initialCity ?? null)
   const [school, setSchool] = useState<string | null>(initialSchool ?? null)
+  const [usagePurposes, setUsagePurposes] = useState<string[]>(initialUsagePurposes ?? [])
 
   const showSchoolStep = dietary.includes('halal')
-  const totalSteps = showSchoolStep ? 3 : 2
+  const totalSteps = showSchoolStep ? 4 : 3
 
   const toggleDietary = (id: string) => {
     setDietary((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]))
   }
 
+  const toggleUsagePurpose = (id: string) => {
+    setUsagePurposes((prev) => {
+      if (id === 'all') return prev.includes('all') ? [] : ['all']
+      const withoutAll = prev.filter((p) => p !== 'all')
+      return withoutAll.includes(id) ? withoutAll.filter((p) => p !== id) : [...withoutAll, id]
+    })
+  }
+
   const finish = () => {
-    onComplete({ dietaryRequirements: dietary, city, schoolOfThought: showSchoolStep ? school : null })
+    onComplete({ dietaryRequirements: dietary, city, schoolOfThought: showSchoolStep ? school : null, usagePurposes })
   }
 
   const next = () => {
-    if (step === 2 && !showSchoolStep) {
+    if (step === totalSteps) {
       finish()
       return
     }
-    if (step === totalSteps) {
-      finish()
+    if (step === 2 && !showSchoolStep) {
+      setStep(3)
       return
     }
     setStep((s) => s + 1)
@@ -128,12 +139,37 @@ export default function Onboarding({ initialDietary, initialCity, initialSchool,
           </div>
         )}
 
+        {step === totalSteps && (
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-emerald-deep">What do you mostly use this app for?</h2>
+            <p className="mt-1 text-sm text-gray-500">Select all that apply — we'll tailor your home screen.</p>
+            <div className="mt-4 space-y-2">
+              {USAGE_PURPOSES.map((p) => (
+                <label
+                  key={p.id}
+                  className={`flex items-center gap-3 rounded-xl border p-3 text-sm font-medium transition ${
+                    usagePurposes.includes(p.id) ? 'border-emerald-deep bg-emerald-deep/5 text-emerald-deep' : 'border-gray-200 text-gray-700'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={usagePurposes.includes(p.id)}
+                    onChange={() => toggleUsagePurpose(p.id)}
+                    className="h-4 w-4"
+                  />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 space-y-2">
           <button
             onClick={next}
             className="w-full rounded-xl bg-emerald-deep py-3 text-sm font-semibold text-white"
           >
-            {step === totalSteps || (step === 2 && !showSchoolStep) ? "Let's go" : 'Continue'}
+            {step === totalSteps ? "Let's go" : 'Continue'}
           </button>
           <p className="text-center text-xs text-gray-400">You can change these anytime in Profile.</p>
         </div>

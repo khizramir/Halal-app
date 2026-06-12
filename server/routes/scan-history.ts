@@ -1,10 +1,29 @@
 import { Router } from 'express'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, gte, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { scanHistory } from '../db/schema.js'
 import { getSession, authConfig } from '../auth.js'
 
 export const scanHistoryRouter = Router()
+
+scanHistoryRouter.get('/trending', async (_req, res) => {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+
+  const rows = await db
+    .select({
+      productName: scanHistory.productName,
+      brand: scanHistory.brand,
+      resultStatus: scanHistory.resultStatus,
+      count: sql<number>`count(*)`.as('count'),
+    })
+    .from(scanHistory)
+    .where(gte(scanHistory.scannedAt, since))
+    .groupBy(scanHistory.productName, scanHistory.brand, scanHistory.resultStatus)
+    .orderBy(desc(sql`count(*)`))
+    .limit(5)
+
+  res.json(rows)
+})
 
 scanHistoryRouter.get('/', async (req, res) => {
   const session = await getSession(req, authConfig)

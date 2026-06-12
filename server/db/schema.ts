@@ -110,6 +110,7 @@ export const userProfiles = pgTable('user_profiles', {
   dietaryRequirements: jsonb('dietary_requirements').$type<string[]>().notNull().default([]),
   city: text('city'),
   schoolOfThought: text('school_of_thought'), // hanafi | shafii | general
+  usagePurposes: jsonb('usage_purposes').$type<string[]>().notNull().default([]),
   onboardingComplete: boolean('onboarding_complete').notNull().default(false),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
@@ -138,6 +139,13 @@ export const savedItems = pgTable('saved_items', {
   itemName: text('item_name').notNull(),
   itemData: jsonb('item_data'),
   savedAt: timestamp('saved_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+export const productCache = pgTable('product_cache', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  query: text('query').notNull().unique(),
+  results: jsonb('results').notNull(),
+  fetchedAt: timestamp('fetched_at', { mode: 'date' }).notNull().defaultNow(),
 })
 
 export const feedback = pgTable('feedback', {

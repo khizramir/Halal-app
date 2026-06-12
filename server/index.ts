@@ -9,6 +9,8 @@ import { scanHistoryRouter } from './routes/scan-history.js'
 import { savedItemsRouter } from './routes/saved-items.js'
 import { feedbackRouter } from './routes/feedback.js'
 import { analyseIngredientsRouter } from './routes/analyse-ingredients.js'
+import { shopRouter } from './routes/shop.js'
+import { mealPlanRouter } from './routes/meal-plan.js'
 
 const app = express()
 app.set('trust proxy', true)
@@ -29,6 +31,8 @@ app.use('/api/scan-history', scanHistoryRouter)
 app.use('/api/saved-items', savedItemsRouter)
 app.use('/api/feedback', feedbackRouter)
 app.use('/api/analyse-ingredients', analyseIngredientsRouter)
+app.use('/api/shop', shopRouter)
+app.use('/api/meal-plan', mealPlanRouter)
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001
 app.listen(port, () => {
