@@ -45,8 +45,9 @@ export function useAppProfile(): AppProfile {
 
   useEffect(() => {
     if (sessionLoading) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionLoading, session?.user?.id])
 
   const chooseGuest = () => {
