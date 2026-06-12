@@ -15,7 +15,7 @@ export default function Login({ onContinueAsGuest }: LoginProps) {
       <div className="w-full max-w-sm space-y-6 text-center">
         <div>
           <div className="text-5xl">🌙</div>
-          <h1 className="mt-3 text-2xl font-bold">MuslimDaily</h1>
+          <h1 className="mt-3 text-2xl font-bold">Halo</h1>
           <p className="mt-1 text-sm text-white/80">
             Prayer times, halal scanning, restaurants & more — personalised for you.
           </p>
