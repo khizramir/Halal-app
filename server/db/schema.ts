@@ -6,6 +6,7 @@ import {
   integer,
   boolean,
   uuid,
+  jsonb,
 } from 'drizzle-orm/pg-core'
 import type { AdapterAccountType } from '@auth/core/adapters'
 
@@ -95,5 +96,56 @@ export const communityReports = pgTable('community_reports', {
   details: text('details'),
   status: text('status').notNull().default('pending'), // pending | approved | rejected
   submittedBy: text('submitted_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+// --- Personalisation, accounts & feedback ---
+
+export const userProfiles = pgTable('user_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  dietaryRequirements: jsonb('dietary_requirements').$type<string[]>().notNull().default([]),
+  city: text('city'),
+  schoolOfThought: text('school_of_thought'), // hanafi | shafii | general
+  onboardingComplete: boolean('onboarding_complete').notNull().default(false),
+  notificationsEnabled: boolean('notifications_enabled').notNull().default(false),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+export const scanHistory = pgTable('scan_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  barcode: text('barcode').notNull(),
+  productName: text('product_name').notNull(),
+  brand: text('brand'),
+  resultStatus: text('result_status').notNull(), // halal | haram | mushbooh | unknown
+  dietaryFlags: jsonb('dietary_flags').$type<string[]>().notNull().default([]),
+  scannedAt: timestamp('scanned_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+export const savedItems = pgTable('saved_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  itemType: text('item_type').notNull(), // product | restaurant
+  referenceId: text('reference_id').notNull(),
+  itemName: text('item_name').notNull(),
+  itemData: jsonb('item_data'),
+  savedAt: timestamp('saved_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+export const feedback = pgTable('feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  rating: integer('rating').notNull(),
+  category: text('category').notNull(), // bug | missing_product | wrong_info | feature_request | general
+  message: text('message'),
+  appVersion: text('app_version'),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 })

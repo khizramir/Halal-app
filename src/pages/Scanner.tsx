@@ -1,310 +1,382 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Html5QrcodeScanner } from 'html5-qrcode'
 import { fetchProductByBarcode, type FoodProduct } from '../lib/foodfacts'
 import { extractENumbers, type ENumberInfo } from '../data/eNumbers'
-
-// Extend Window type to include BarcodeDetector
-declare global {
-  interface Window {
-    BarcodeDetector?: {
-      new (options?: { formats: string[] }): {
-        detect(source: ImageBitmapSource): Promise<Array<{ rawValue: string }>>
-      }
-      getSupportedFormats(): Promise<string[]>
-    }
-  }
-}
+import { useSession } from '../lib/auth'
+import { addScanHistory, getScanHistory, saveItem } from '../lib/api'
+import { incrementGuestScanCount } from '../lib/guest'
+import { FeedbackModal } from '../components/FeedbackWidget'
+import type { ScanHistoryEntry } from '../types'
 
 const STATUS_STYLES: Record<ENumberInfo['status'], string> = {
-  halal: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
-  haram: 'bg-red-100 text-red-800 border border-red-300',
-  mushbooh: 'bg-amber-100 text-amber-800 border border-amber-300',
+  halal: 'bg-emerald/10 text-emerald',
+  haram: 'bg-red-100 text-red-700',
+  mushbooh: 'bg-amber-100 text-amber-700',
 }
 
-const STATUS_LABELS: Record<ENumberInfo['status'], string> = {
-  halal: 'Halal',
-  haram: 'Haram',
-  mushbooh: 'Mushbooh (Uncertain)',
-}
+const AFIC_SEARCH_URL = 'https://halal.afic.com.au/'
 
-function deriveHalalStatus(eNumbers: ENumberInfo[]) {
-  if (eNumbers.some((e) => e.status === 'haram')) {
-    return { label: STATUS_LABELS.haram, style: STATUS_STYLES.haram }
-  }
-  if (eNumbers.some((e) => e.status === 'mushbooh')) {
-    return { label: STATUS_LABELS.mushbooh, style: STATUS_STYLES.mushbooh }
-  }
-  if (eNumbers.length > 0) {
-    return { label: STATUS_LABELS.halal, style: STATUS_STYLES.halal }
-  }
-  return { label: 'No E-numbers detected - verify manually', style: 'bg-gray-100 text-gray-700 border border-gray-300' }
+interface LocalProduct {
+  barcode: string
+  name: string
+  brand: string | null
+  certifier: string | null
+  status: ENumberInfo['status']
+  notes: string | null
 }
 
 export default function Scanner() {
-  const [manualBarcode, setManualBarcode] = useState('')
+  const { session } = useSession()
+  const [barcode, setBarcode] = useState('')
   const [product, setProduct] = useState<FoodProduct | null>(null)
-  const [eNumbers, setENumbers] = useState<ENumberInfo[]>([])
-  const [loading, setLoading] = useState(false)
+  const [localProduct, setLocalProduct] = useState<LocalProduct | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [cameraActive, setCameraActive] = useState(false)
-  const [hasBarcodeDetector] = useState(() => !!window.BarcodeDetector)
-
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const rafRef = useRef<number>(0)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  const stopCamera = useCallback(() => {
-    cancelAnimationFrame(rafRef.current)
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
-    setCameraActive(false)
-  }, [])
+  const [loading, setLoading] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [recentScans, setRecentScans] = useState<ScanHistoryEntry[]>([])
+  const [saved, setSaved] = useState(false)
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrResult, setOcrResult] = useState<string | null>(null)
+  const [ocrError, setOcrError] = useState<string | null>(null)
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null)
 
   useEffect(() => {
-    return stopCamera
-  }, [stopCamera])
+    if (!session?.user) return
+    getScanHistory().then((rows) => setRecentScans((rows ?? []).slice(0, 5)))
+  }, [session?.user])
 
-  async function lookupBarcode(barcode: string) {
-    const cleaned = barcode.trim()
-    if (!cleaned) return
+  const recordScan = (code: string, result: { name: string; brand: string | null; status: string; dietaryFlags?: string[] }) => {
+    if (session?.user) {
+      addScanHistory({
+        barcode: code,
+        productName: result.name,
+        brand: result.brand,
+        resultStatus: result.status,
+        dietaryFlags: result.dietaryFlags ?? [],
+      }).then(() => {
+        getScanHistory().then((rows) => setRecentScans((rows ?? []).slice(0, 5)))
+      })
+    } else {
+      const count = incrementGuestScanCount()
+      if (count >= 5) setShowGuestPrompt(true)
+    }
+  }
+
+  const lookup = async (code: string) => {
     setLoading(true)
     setError(null)
     setProduct(null)
-    setENumbers([])
+    setLocalProduct(null)
+    setSaved(false)
+
+    let foundLocal: LocalProduct | null = null
     try {
-      const result = await fetchProductByBarcode(cleaned)
+      const res = await fetch(`/api/products/${encodeURIComponent(code)}`)
+      if (res.ok) {
+        foundLocal = await res.json()
+        setLocalProduct(foundLocal)
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const result = await fetchProductByBarcode(code)
       if (!result) {
-        setError('No product found for barcode: ' + cleaned)
+        setError('Product not found in Open Food Facts.')
       } else {
         setProduct(result)
-        setENumbers(extractENumbers(result.ingredientsText))
       }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Lookup failed')
+
+      const eNumbers = result ? extractENumbers(result.ingredientsText) : []
+      const hasHaram = eNumbers.some((e) => e.status === 'haram')
+      const hasMushbooh = eNumbers.some((e) => e.status === 'mushbooh')
+      const status = foundLocal?.status ?? (hasHaram ? 'haram' : hasMushbooh ? 'mushbooh' : result ? 'halal' : 'unknown')
+      const name = foundLocal?.name ?? result?.productName ?? code
+      const brand = foundLocal?.brand ?? result?.brands ?? null
+      recordScan(code, { name, brand, status })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lookup failed.')
     } finally {
       setLoading(false)
     }
   }
 
-  async function handleImageCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setLoading(true)
+  const startScan = () => {
     setError(null)
-    setProduct(null)
-    setENumbers([])
-    try {
-      if (!window.BarcodeDetector) throw new Error('BarcodeDetector not supported')
-      const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] })
-      const bitmap = await createImageBitmap(file)
-      const results = await detector.detect(bitmap)
-      if (results.length === 0) {
-        setError('No barcode found in photo. Try better lighting or a clearer image.')
-        setLoading(false)
-      } else {
-        await lookupBarcode(results[0].rawValue)
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to decode image')
-      setLoading(false)
+    setScanning(true)
+  }
+
+  const stopScan = () => {
+    scannerRef.current?.clear().catch(() => {})
+    scannerRef.current = null
+    setScanning(false)
+  }
+
+  useEffect(() => {
+    if (!scanning) return
+
+    const scanner = new Html5QrcodeScanner(
+      'qr-reader',
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      false,
+    )
+    scannerRef.current = scanner
+
+    scanner.render(
+      (decodedText) => {
+        stopScan()
+        setBarcode(decodedText)
+        lookup(decodedText)
+      },
+      () => {
+        // ignore per-frame scan errors
+      },
+    )
+
+    return () => {
+      scanner.clear().catch(() => {})
+      scannerRef.current = null
     }
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanning])
 
-  async function startCamera() {
-    setError(null)
-    setProduct(null)
-    setENumbers([])
+  const handleIngredientPhoto = async (file: File) => {
+    setOcrError(null)
+    setOcrResult(null)
+    setOcrLoading(true)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
       })
-      streamRef.current = stream
-      setCameraActive(true)
-      // Wait for video to be ready
-      await new Promise<void>((resolve) => {
-        if (!videoRef.current) { resolve(); return }
-        videoRef.current.srcObject = stream
-        videoRef.current.onloadedmetadata = () => resolve()
+
+      const res = await fetch('/api/analyse-ingredients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mediaType: file.type }),
       })
-      if (!window.BarcodeDetector || !videoRef.current || !canvasRef.current) return
-      const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] })
-      const canvas = canvasRef.current
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      const scan = async () => {
-        const video = videoRef.current
-        if (!video || !streamRef.current) return
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        ctx.drawImage(video, 0, 0)
-        try {
-          const results = await detector.detect(canvas)
-          if (results.length > 0) {
-            stopCamera()
-            await lookupBarcode(results[0].rawValue)
-            return
-          }
-        } catch (_) {}
-        rafRef.current = requestAnimationFrame(() => { scan() })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setOcrError(data.error ?? 'Could not analyse ingredients.')
+        return
       }
-      rafRef.current = requestAnimationFrame(() => { scan() })
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Camera access failed')
-      setCameraActive(false)
+
+      const data = await res.json()
+      setOcrResult(data.result)
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : 'Could not analyse ingredients.')
+    } finally {
+      setOcrLoading(false)
     }
   }
 
-  async function handleManualSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    await lookupBarcode(manualBarcode)
-  }
+  const eNumbers = product ? extractENumbers(product.ingredientsText) : []
+  const hasHaram = eNumbers.some((e) => e.status === 'haram')
+  const hasMushbooh = eNumbers.some((e) => e.status === 'mushbooh')
 
-  const halalStatus = product ? deriveHalalStatus(eNumbers) : null
+  const handleSaveProduct = async () => {
+    if (!session?.user) {
+      setShowGuestPrompt(true)
+      return
+    }
+    const name = localProduct?.name ?? product?.productName ?? barcode
+    await saveItem({
+      itemType: 'product',
+      referenceId: barcode,
+      itemName: name,
+      itemData: { localProduct, product },
+    })
+    setSaved(true)
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="bg-white border-b px-4 py-4 flex items-center gap-3">
-        <span className="text-2xl">📷</span>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Halal Scanner</h1>
-          <p className="text-xs text-gray-500">Scan a barcode to check halal status</p>
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold text-emerald-deep">Halal Product Scanner</h2>
+
+      <div className="space-y-2 rounded-xl bg-white p-3 shadow">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="Enter barcode number"
+            value={barcode}
+            onChange={(e) => setBarcode(e.target.value)}
+            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          />
+          <button
+            onClick={() => lookup(barcode)}
+            disabled={!barcode || loading}
+            className="rounded-lg bg-emerald-deep px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Look up
+          </button>
         </div>
+
+        <button
+          onClick={scanning ? stopScan : startScan}
+          className="w-full rounded-lg border border-emerald py-2 text-sm font-medium text-emerald"
+        >
+          {scanning ? 'Stop camera' : '📷 Scan with camera'}
+        </button>
+
+        {scanning && <div id="qr-reader" className="w-full" />}
+
+        <label className="block w-full cursor-pointer rounded-lg border border-dashed border-gray-300 py-2 text-center text-sm font-medium text-gray-600">
+          📸 Photograph ingredient list (AI analysis)
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleIngredientPhoto(file)
+            }}
+          />
+        </label>
+        {ocrLoading && <p className="text-xs text-gray-500">Analysing ingredients…</p>}
+        {ocrError && <p className="text-xs text-red-600">{ocrError}</p>}
+        {ocrResult && (
+          <pre className="whitespace-pre-wrap rounded-lg bg-cream p-2 text-xs text-gray-700">{ocrResult}</pre>
+        )}
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+      {loading && <p className="text-gray-500">Looking up product…</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
-        {/* Live camera scanner */}
-        {hasBarcodeDetector && (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-            <p className="text-sm font-semibold text-gray-700">Live Camera Scanner</p>
-            {!cameraActive ? (
-              <button
-                onClick={startCamera}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
-              >
-                Use Camera
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <div className="relative">
-                  <video ref={videoRef} className="w-full rounded-xl bg-black" autoPlay muted playsInline />
-                  <canvas ref={canvasRef} className="hidden" />
-                </div>
-                <button
-                  onClick={stopCamera}
-                  className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 rounded-xl text-sm"
-                >
-                  Stop Camera
-                </button>
+      {localProduct && (
+        <div className={`rounded-xl p-4 shadow ${STATUS_STYLES[localProduct.status]}`}>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-semibold">
+                {localProduct.name}
+                {localProduct.brand ? ` — ${localProduct.brand}` : ''}
+              </p>
+              <p className="text-sm">
+                Status: <span className="font-medium uppercase">{localProduct.status}</span>
+                {localProduct.certifier ? ` · ${localProduct.certifier}` : ''}
+              </p>
+            </div>
+            <button onClick={handleSaveProduct} className="text-2xl" aria-label="Save product">
+              {saved ? '🔖' : '📑'}
+            </button>
+          </div>
+          {localProduct.notes && <p className="mt-1 text-xs opacity-90">{localProduct.notes}</p>}
+        </div>
+      )}
+
+      {product && (
+        <div className="space-y-3 rounded-xl bg-white p-4 shadow">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {product.imageUrl && (
+                <img src={product.imageUrl} alt="" className="h-16 w-16 rounded object-cover" />
+              )}
+              <div>
+                <h3 className="font-semibold text-emerald-deep">{product.productName}</h3>
+                {product.brands && <p className="text-sm text-gray-500">{product.brands}</p>}
               </div>
+            </div>
+            {!localProduct && (
+              <button onClick={handleSaveProduct} className="text-2xl" aria-label="Save product">
+                {saved ? '🔖' : '📑'}
+              </button>
             )}
           </div>
-        )}
 
-        {/* Photo / file capture */}
-        <div className="bg-white rounded-2xl shadow-sm border p-5 text-center space-y-3">
-          <p className="text-sm font-semibold text-gray-700">Scan Product Barcode</p>
-          {hasBarcodeDetector ? (
-            <label className="inline-block">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleImageCapture}
-              />
-              <span className="cursor-pointer inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold py-3 px-8 rounded-xl text-sm transition-colors">
-                Take Photo
-              </span>
-            </label>
-          ) : (
-            <p className="text-sm text-gray-500 bg-amber-50 border border-amber-200 rounded-xl p-3">
-              Camera scanning is not supported in this browser. Use manual entry below, or try Chrome on Android/desktop.
+          {hasHaram && (
+            <p className="rounded-lg bg-red-50 p-2 text-sm font-medium text-red-700">
+              ⚠️ Contains additives commonly considered haram. Check certification before consuming.
             </p>
           )}
-          <p className="text-xs text-gray-400">Point your camera at the barcode on the product</p>
-        </div>
+          {!hasHaram && hasMushbooh && (
+            <p className="rounded-lg bg-amber-50 p-2 text-sm font-medium text-amber-700">
+              ❓ Contains additives of doubtful (mushbooh) status — source verification recommended.
+            </p>
+          )}
+          {!hasHaram && !hasMushbooh && eNumbers.length === 0 && (
+            <p className="rounded-lg bg-emerald/10 p-2 text-sm font-medium text-emerald">
+              No flagged additives detected from ingredient list.
+            </p>
+          )}
 
-        {/* Manual barcode entry */}
-        <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-          <p className="text-sm font-semibold text-gray-700">Enter Barcode Manually</p>
-          <form onSubmit={handleManualSubmit} className="flex gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={manualBarcode}
-              onChange={(e) => setManualBarcode(e.target.value)}
-              placeholder="e.g. 9300650000000"
-              className="flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-            <button
-              type="submit"
-              disabled={loading || !manualBarcode.trim()}
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold py-2 px-4 rounded-xl text-sm"
-            >
-              Search
-            </button>
-          </form>
-        </div>
-
-        {loading && (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        )}
-
-        {product && halalStatus && !loading && (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-4">
-            <div className="flex items-start gap-3">
-              {product.imageUrl && (
-                <img src={product.imageUrl} alt={product.productName} className="w-16 h-16 object-contain rounded-xl border" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm leading-tight">{product.productName}</p>
-                {product.brands && <p className="text-xs text-gray-500 mt-0.5">{product.brands}</p>}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className={`inline-block text-xs font-semibold px-3 py-1.5 rounded-full ${halalStatus.style}`}>
-                {halalStatus.label}
-              </span>
-            </div>
-
-            {eNumbers.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-gray-600 mb-2">E-Numbers Found:</p>
-                <div className="space-y-2">
-                  {eNumbers.map((en) => (
-                    <div key={en.code} className={`text-xs rounded-xl px-3 py-2 ${STATUS_STYLES[en.status]}`}>
-                      <span className="font-bold">{en.code}</span>
-                      {en.name && <span className="ml-1">– {en.name}</span>}
-                      <span className="ml-1 opacity-75">({STATUS_LABELS[en.status]})</span>
-                    </div>
-                  ))}
+          {eNumbers.length > 0 && (
+            <div className="space-y-2">
+              {eNumbers.map((e) => (
+                <div key={e.code} className={`rounded-lg p-2 text-sm ${STATUS_STYLES[e.status]}`}>
+                  <span className="font-semibold">{e.code} — {e.name}</span>
+                  <p className="text-xs opacity-90">{e.note}</p>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
+          )}
 
-            {product.ingredientsText && (
-              <div>
-                <p className="text-xs font-semibold text-gray-600 mb-1">Ingredients:</p>
-                <p className="text-xs text-gray-500 leading-relaxed">{product.ingredientsText}</p>
-              </div>
-            )}
+          {product.ingredientsText && (
+            <details className="text-sm text-gray-600">
+              <summary className="cursor-pointer text-emerald-deep">Full ingredients</summary>
+              <p className="mt-1">{product.ingredientsText}</p>
+            </details>
+          )}
 
+          <div className="flex items-center justify-between text-sm">
+            <a href={AFIC_SEARCH_URL} target="_blank" rel="noreferrer" className="text-emerald underline">
+              Check AFIC halal certification directory →
+            </a>
+            <button onClick={() => setShowFeedback(true)} className="text-xs text-gray-400 underline">
+              Report an issue
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {session?.user && recentScans.length > 0 && (
+        <div className="rounded-xl bg-white p-4 shadow">
+          <h3 className="font-semibold text-emerald-deep">Recent Scans</h3>
+          <div className="mt-2 space-y-2">
+            {recentScans.map((s) => (
+              <div key={s.id} className="rounded-lg bg-cream p-2 text-sm">
+                <span className="font-medium text-emerald-deep">{s.productName}</span>
+                {s.brand && <span className="text-gray-500"> · {s.brand}</span>}
+                <span className="ml-2 text-xs uppercase text-gray-400">{s.resultStatus}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showGuestPrompt && !session?.user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-lg">
+            <p className="text-2xl">📑</p>
+            <p className="mt-2 font-semibold text-emerald-deep">
+              Sign up to save your history and preferences
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              Create a free account to keep your scan history and saved products across sessions.
+            </p>
+            <button
+              onClick={() => setShowGuestPrompt(false)}
+              className="mt-4 w-full rounded-xl bg-emerald-deep py-2 text-sm font-semibold text-white"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFeedback && (
+        <FeedbackModal
+          initialCategory="wrong_info"
+          prefillMessage={product ? `Issue with ${product.productName} (${barcode}): ` : ''}
+          onClose={() => setShowFeedback(false)}
+        />
+      )}
     </div>
   )
 }

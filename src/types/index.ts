@@ -39,3 +39,68 @@ export interface CommunitySubmission {
   city?: string
   submittedAt: string
 }
+
+export const DIETARY_REQUIREMENTS = [
+  { id: 'halal', label: 'Halal status' },
+  { id: 'vegetarian', label: 'Vegetarian / Vegan' },
+  { id: 'gluten_free', label: 'Gluten free' },
+  { id: 'dairy_free', label: 'Dairy free' },
+  { id: 'nut_allergy', label: 'Nut allergies' },
+  { id: 'kosher', label: 'Kosher' },
+] as const
+
+export const AUSTRALIAN_CITIES = [
+  'Sydney',
+  'Melbourne',
+  'Brisbane',
+  'Perth',
+  'Adelaide',
+  'Other Australian city',
+  'Outside Australia',
+] as const
+
+export const SCHOOLS_OF_THOUGHT = [
+  { id: 'hanafi', label: "Hanafi" },
+  { id: 'shafii', label: "Shafi'i" },
+  { id: 'general', label: 'General / Not sure' },
+] as const
+
+export interface UserProfile {
+  id: string
+  userId: string
+  dietaryRequirements: string[]
+  city: string | null
+  schoolOfThought: string | null
+  onboardingComplete: boolean
+  notificationsEnabled: boolean
+  createdAt: string
+}
+
+export interface ScanHistoryEntry {
+  id: string
+  userId: string
+  barcode: string
+  productName: string
+  brand: string | null
+  resultStatus: 'halal' | 'haram' | 'mushbooh' | 'unknown'
+  dietaryFlags: string[]
+  scannedAt: string
+}
+
+export interface SavedItem {
+  id: string
+  userId: string
+  itemType: 'product' | 'restaurant'
+  referenceId: string
+  itemName: string
+  itemData: Record<string, unknown> | null
+  savedAt: string
+}
+
+export const FEEDBACK_CATEGORIES = [
+  { id: 'bug', label: 'Bug report' },
+  { id: 'missing_product', label: 'Missing product' },
+  { id: 'wrong_info', label: 'Wrong info' },
+  { id: 'feature_request', label: 'Feature request' },
+  { id: 'general', label: 'General feedback' },
+] as const

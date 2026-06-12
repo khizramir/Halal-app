@@ -9,8 +9,31 @@ import Calendar from './pages/Calendar'
 import Adhkar from './pages/Adhkar'
 import Zakat from './pages/Zakat'
 import Submit from './pages/Submit'
+import Profile from './pages/Profile'
+import Login from './pages/Login'
+import Onboarding from './components/Onboarding'
+import { useAppProfile } from './lib/useAppProfile'
 
 function App() {
+  const profile = useAppProfile()
+
+  if (profile.loading) return null
+
+  if (!profile.entryChosen) {
+    return <Login onContinueAsGuest={profile.chooseGuest} />
+  }
+
+  if (!profile.onboardingComplete) {
+    return (
+      <Onboarding
+        initialDietary={profile.dietaryRequirements}
+        initialCity={profile.city}
+        initialSchool={profile.schoolOfThought}
+        onComplete={profile.completeOnboarding}
+      />
+    )
+  }
+
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -23,6 +46,7 @@ function App() {
         <Route path="adhkar" element={<Adhkar />} />
         <Route path="zakat" element={<Zakat />} />
         <Route path="submit" element={<Submit />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>
   )
