@@ -1,7 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchProductByBarcode, type FoodProduct } from '../lib/foodfacts'
 import { extractENumbers, type ENumberInfo } from '../data/eNumbers'
+
+// Extend Window type to include BarcodeDetector
+declare global {
+  interface Window {
+    BarcodeDetector?: {
+      new (options?: { formats: string[] }): {
+        detect(source: ImageBitmapSource): Promise<Array<{ rawValue: string }>>
+      }
+      getSupportedFormats(): Promise<string[]>
+    }
+  }
+}
 
 const STATUS_STYLES: Record<ENumberInfo['status'], string> = {
   halal: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
@@ -17,18 +28,16 @@ const STATUS_LABELS: Record<ENumberInfo['status'], string> = {
 
 function deriveHalalStatus(eNumbers: ENumberInfo[]) {
   if (eNumbers.some((e) => e.status === 'haram')) {
-    return { label: STATUS_LABELS.haram, style: STATUS_STYLES.haram, verdict: 'haram' as const }
+    return { label: STATUS_LABELS.haram, style: STATUS_STYLES.haram }
   }
   if (eNumbers.some((e) => e.status === 'mushbooh')) {
-    return { label: STATUS_LABELS.mushbooh, style: STATUS_STYLES.mushbooh, verdict: 'mushbooh' as const }
+    return { label: STATUS_LABELS.mushbooh, style: STATUS_STYLES.mushbooh }
   }
   if (eNumbers.length > 0) {
-    return { label: STATUS_LABELS.halal, style: STATUS_STYLES.halal, verdict: 'halal' as const }
+    return { label: STATUS_LABELS.halal, style: STATUS_STYLES.halal }
   }
-  return { label: 'No E-numbers detected - verify manually', style: 'bg-gray-100 text-gray-700 border border-gray-300', verdict: 'halal' as const }
+  return { label: 'No E-numbers detected - verify manually', style: 'bg-gray-100 text-gray-700 border border-gray-300' }
 }
-
-const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
 export default function Scanner() {
   const [manualBarcode, setManualBarcode] = useState('')
@@ -37,21 +46,24 @@ export default function Scanner() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
-  const [mobile] = useState(isMobile)
+  const [hasBarcodeDetector] = useState(() => !!window.BarcodeDetector)
 
   const videoRef = useRef<HTMLVideoElement>(null)
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const rafRef = useRef<number>(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  useEffect(() => {
-    return () => { stopCamera() }
+  const stopCamera = useCallback(() => {
+    cancelAnimationFrame(rafRef.current)
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    setCameraActive(false)
   }, [])
 
-  function stopCamera() {
-    try { BrowserMultiFormatReader.releaseAllStreams() } catch (_) {}
-    readerRef.current = null
-    setCameraActive(false)
-  }
+  useEffect(() => {
+    return stopCamera
+  }, [stopCamera])
 
   async function lookupBarcode(barcode: string) {
     const cleaned = barcode.trim()
@@ -83,46 +95,61 @@ export default function Scanner() {
     setProduct(null)
     setENumbers([])
     try {
-      const reader = new BrowserMultiFormatReader()
-      const imgUrl = URL.createObjectURL(file)
-      const img = new Image()
-      img.src = imgUrl
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve()
-        img.onerror = () => reject(new Error('Failed to load image'))
-      })
-      const result = await reader.decodeFromImageElement(img)
-      URL.revokeObjectURL(imgUrl)
-      await lookupBarcode(result.getText())
-    } catch (e: unknown) {
-      if (e instanceof NotFoundException) {
-        setError('No barcode found in photo. Try better lighting or angle.')
+      if (!window.BarcodeDetector) throw new Error('BarcodeDetector not supported')
+      const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] })
+      const bitmap = await createImageBitmap(file)
+      const results = await detector.detect(bitmap)
+      if (results.length === 0) {
+        setError('No barcode found in photo. Try better lighting or a clearer image.')
+        setLoading(false)
       } else {
-        setError(e instanceof Error ? e.message : 'Failed to decode image')
+        await lookupBarcode(results[0].rawValue)
       }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to decode image')
       setLoading(false)
     }
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   async function startCamera() {
-    setCameraActive(true)
     setError(null)
     setProduct(null)
     setENumbers([])
     try {
-      const reader = new BrowserMultiFormatReader()
-      readerRef.current = reader
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices()
-      const deviceId = devices[0]?.deviceId
-      if (!videoRef.current) return
-      await reader.decodeFromVideoDevice(deviceId, videoRef.current, (result, err) => {
-        if (result) {
-          stopCamera()
-          lookupBarcode(result.getText())
-        }
-        if (err && !(err instanceof NotFoundException)) console.warn('Scan error:', err)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
       })
+      streamRef.current = stream
+      setCameraActive(true)
+      // Wait for video to be ready
+      await new Promise<void>((resolve) => {
+        if (!videoRef.current) { resolve(); return }
+        videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => resolve()
+      })
+      if (!window.BarcodeDetector || !videoRef.current || !canvasRef.current) return
+      const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] })
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const scan = async () => {
+        const video = videoRef.current
+        if (!video || !streamRef.current) return
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        ctx.drawImage(video, 0, 0)
+        try {
+          const results = await detector.detect(canvas)
+          if (results.length > 0) {
+            stopCamera()
+            await lookupBarcode(results[0].rawValue)
+            return
+          }
+        } catch (_) {}
+        rafRef.current = requestAnimationFrame(() => { scan() })
+      }
+      rafRef.current = requestAnimationFrame(() => { scan() })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Camera access failed')
       setCameraActive(false)
@@ -148,9 +175,38 @@ export default function Scanner() {
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
 
-        {mobile && (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 text-center space-y-3">
-            <p className="text-sm font-semibold text-gray-700">Scan Product Barcode</p>
+        {/* Live camera scanner */}
+        {hasBarcodeDetector && (
+          <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
+            <p className="text-sm font-semibold text-gray-700">Live Camera Scanner</p>
+            {!cameraActive ? (
+              <button
+                onClick={startCamera}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              >
+                Use Camera
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <video ref={videoRef} className="w-full rounded-xl bg-black" autoPlay muted playsInline />
+                  <canvas ref={canvasRef} className="hidden" />
+                </div>
+                <button
+                  onClick={stopCamera}
+                  className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 rounded-xl text-sm"
+                >
+                  Stop Camera
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Photo / file capture */}
+        <div className="bg-white rounded-2xl shadow-sm border p-5 text-center space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Scan Product Barcode</p>
+          {hasBarcodeDetector ? (
             <label className="inline-block">
               <input
                 ref={fileInputRef}
@@ -164,34 +220,15 @@ export default function Scanner() {
                 Take Photo
               </span>
             </label>
-            <p className="text-xs text-gray-400">Point your camera at the barcode on the product</p>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-gray-500 bg-amber-50 border border-amber-200 rounded-xl p-3">
+              Camera scanning is not supported in this browser. Use manual entry below, or try Chrome on Android/desktop.
+            </p>
+          )}
+          <p className="text-xs text-gray-400">Point your camera at the barcode on the product</p>
+        </div>
 
-        {!mobile && (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-            <p className="text-sm font-semibold text-gray-700">Live Camera Scanner</p>
-            {!cameraActive ? (
-              <button
-                onClick={startCamera}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
-              >
-                Use Camera
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <video ref={videoRef} className="w-full rounded-xl bg-black" autoPlay muted playsInline />
-                <button
-                  onClick={stopCamera}
-                  className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 rounded-xl text-sm"
-                >
-                  Stop Camera
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
+        {/* Manual barcode entry */}
         <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
           <p className="text-sm font-semibold text-gray-700">Enter Barcode Manually</p>
           <form onSubmit={handleManualSubmit} className="flex gap-2">
@@ -214,9 +251,8 @@ export default function Scanner() {
         </div>
 
         {loading && (
-          <div className="bg-white rounded-2xl shadow-sm border p-6 text-center space-y-3">
-            <div className="animate-spin inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full" />
-            <p className="text-sm text-gray-600">Looking up product...</p>
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
           </div>
         )}
 
@@ -227,42 +263,58 @@ export default function Scanner() {
         )}
 
         {product && halalStatus && !loading && (
-          <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-            {product.imageUrl && (
-              <img src={product.imageUrl} alt={product.productName} className="w-full h-40 object-contain bg-gray-50 p-2" />
-            )}
-            <div className="p-5 space-y-3">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">{product.productName}</h2>
-                {product.brands && <p className="text-xs text-gray-500">{product.brands}</p>}
-                <p className="text-xs text-gray-400 mt-0.5">Barcode: {product.code}</p>
+          <div className="bg-white rounded-2xl shadow-sm border p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              {product.imageUrl && (
+                <img src={product.imageUrl} alt={product.name} className="w-16 h-16 object-contain rounded-xl border" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 text-sm leading-tight">{product.name}</p>
+                {product.brand && <p className="text-xs text-gray-500 mt-0.5">{product.brand}</p>}
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
               <span className={`inline-block text-xs font-semibold px-3 py-1.5 rounded-full ${halalStatus.style}`}>
                 {halalStatus.label}
               </span>
-              {eNumbers.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">E-Numbers Found</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {eNumbers.map((e) => (
-                      <span key={e.code} title={e.name} className={`text-xs px-2 py-1 rounded-full ${STATUS_STYLES[e.status]}`}>
-                        {e.code}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {product.ingredientsText && (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Ingredients</p>
-                  <p className="text-xs text-gray-600 leading-relaxed">{product.ingredientsText}</p>
-                </div>
-              )}
             </div>
+
+            {eNumbers.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-2">E-Numbers Found:</p>
+                <div className="space-y-2">
+                  {eNumbers.map((en) => (
+                    <div key={en.code} className={`text-xs rounded-xl px-3 py-2 ${STATUS_STYLES[en.status]}`}>
+                      <span className="font-bold">{en.code}</span>
+                      {en.name && <span className="ml-1">– {en.name}</span>}
+                      <span className="ml-1 opacity-75">({STATUS_LABELS[en.status]})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {product.ingredientsText && (
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-1">Ingredients:</p>
+                <p className="text-xs text-gray-500 leading-relaxed">{product.ingredientsText}</p>
+              </div>
+            )}
+
+            {product.openFoodFactsUrl && (
+              <a
+                href={product.openFoodFactsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                View on Open Food Facts →
+              </a>
+            )}
           </div>
         )}
-
       </div>
     </div>
   )
-    }
+}
