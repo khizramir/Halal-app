@@ -1,4 +1,4 @@
-import type { BasketResult, MealPlanResult, SavedItem, ScanHistoryEntry, ShopProduct, UserProfile } from '../types'
+import type { BasketResult, MealPlanResult, SavedItem, ScanBarcodeResult, ScanHistoryEntry, ScanPhotoResult, ShopProduct, UserProfile } from '../types'
 
 async function request<T>(url: string, options?: RequestInit): Promise<T | null> {
   const res = await fetch(url, {
@@ -79,6 +79,20 @@ export function buildBasket(request_: string, dietaryRequirements: string[] = []
   return request<BasketResult>('/api/shop/basket', {
     method: 'POST',
     body: JSON.stringify({ request: request_, dietaryRequirements }),
+  })
+}
+
+export function scanBarcode(barcode: string, dietaryProfile: string[] = []) {
+  return request<ScanBarcodeResult>('/api/scan/barcode', {
+    method: 'POST',
+    body: JSON.stringify({ barcode, dietaryProfile }),
+  })
+}
+
+export function scanPhoto(image: string, mediaType: string, dietaryProfile: string[] = []) {
+  return request<ScanPhotoResult>('/api/scan/photo', {
+    method: 'POST',
+    body: JSON.stringify({ image, mediaType, dietaryProfile }),
   })
 }
 

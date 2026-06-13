@@ -20,7 +20,7 @@ export const authConfig: ExpressAuthConfig = {
     }),
     Resend({
       apiKey: process.env.AUTH_RESEND_KEY,
-      from: process.env.AUTH_EMAIL_FROM ?? 'Halal Hub Australia <onboarding@resend.dev>',
+      from: process.env.AUTH_EMAIL_FROM ?? 'Halo <onboarding@resend.dev>',
     }),
   ],
   session: { strategy: 'database' },

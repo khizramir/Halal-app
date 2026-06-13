@@ -11,6 +11,7 @@ import { feedbackRouter } from './routes/feedback.js'
 import { analyseIngredientsRouter } from './routes/analyse-ingredients.js'
 import { shopRouter } from './routes/shop.js'
 import { mealPlanRouter } from './routes/meal-plan.js'
+import { scanRouter } from './routes/scan.js'
 
 const app = express()
 app.set('trust proxy', true)
@@ -33,8 +34,9 @@ app.use('/api/feedback', feedbackRouter)
 app.use('/api/analyse-ingredients', analyseIngredientsRouter)
 app.use('/api/shop', shopRouter)
 app.use('/api/meal-plan', mealPlanRouter)
+app.use('/api/scan', scanRouter)
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001
 app.listen(port, () => {
-  console.log(`Halal Hub Australia API listening on http://localhost:${port}`)
+  console.log(`Halo API listening on http://localhost:${port}`)
 })

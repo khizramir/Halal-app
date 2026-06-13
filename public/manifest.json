@@ -1,11 +1,11 @@
 {
-    "name": "Halo",
-    "short_name": "Halo",
-    "description": "Your daily companion for halal living",
+  "name": "Halo — Eat well. Spend less. No compromise.",
+  "short_name": "Halo",
+  "description": "The smartest AI-powered dietary grocery assistant in Australia",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FAFAF8",
-    "theme_color": "#1B4FD8",
+  "theme_color": "#1B4FD8",
   "orientation": "portrait",
   "icons": [
     {

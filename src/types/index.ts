@@ -141,6 +141,40 @@ export interface MealPlanResult {
   shoppingList: string[]
 }
 
+export type Verdict = 'ok' | 'not_ok' | 'uncertain'
+
+export interface RequirementVerdict {
+  requirement: string
+  verdict: Verdict
+  reason: string
+}
+
+export interface ProductAnalysis {
+  requirements: RequirementVerdict[]
+  overallVerdict: 'suitable' | 'not_suitable' | 'check_label'
+  flaggedIngredients: string[]
+  confidence: number
+}
+
+export interface MasterProduct {
+  barcode: string
+  name: string
+  brand: string | null
+  imageUrl: string | null
+  ingredientsText: string | null
+  allergens: string[]
+  nutriments: Record<string, number | undefined> | null
+}
+
+export interface ScanBarcodeResult {
+  product: MasterProduct
+  analysis: ProductAnalysis
+}
+
+export interface ScanPhotoResult extends ProductAnalysis {
+  extractedIngredients: string
+}
+
 export const FEEDBACK_CATEGORIES = [
   { id: 'bug', label: 'Bug report' },
   { id: 'missing_product', label: 'Missing product' },

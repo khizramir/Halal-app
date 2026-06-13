@@ -1,10 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-emerald-deep: #0f5132;
-  --color-emerald: #14804a;
-  --color-gold: #c9a227;
-  --color-cream: #faf8f3;
+  --color-emerald-deep: #1b4fd8;
+  --color-emerald: #10b981;
+  --color-gold: #f59e0b;
+  --color-cream: #fafaf8;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-success: #10b981;
 }
 
 body {
