@@ -3,10 +3,69 @@ import { Html5QrcodeScanner } from 'html5-qrcode'
 import { fetchProductByBarcode, type FoodProduct } from '../lib/foodfacts'
 import { extractENumbers, type ENumberInfo } from '../data/eNumbers'
 import { useSession } from '../lib/auth'
-import { addScanHistory, getScanHistory, saveItem } from '../lib/api'
+import { addScanHistory, getScanHistory, saveItem, scanBarcode, scanPhoto } from '../lib/api'
 import { incrementGuestScanCount } from '../lib/guest'
 import { FeedbackModal } from '../components/FeedbackWidget'
-import type { ScanHistoryEntry } from '../types'
+import { useAppProfile } from '../lib/useAppProfile'
+import { DIETARY_REQUIREMENTS } from '../types'
+import type { ProductAnalysis, ScanHistoryEntry } from '../types'
+
+const VERDICT_STYLES: Record<ProductAnalysis['overallVerdict'], string> = {
+  suitable: 'bg-emerald/10 text-emerald',
+  not_suitable: 'bg-red-100 text-red-700',
+  check_label: 'bg-amber-100 text-amber-700',
+}
+
+const VERDICT_LABELS: Record<ProductAnalysis['overallVerdict'], string> = {
+  suitable: '✅ SUITABLE',
+  not_suitable: '❌ NOT SUITABLE',
+  check_label: '⚠️ CHECK LABEL',
+}
+
+const REQUIREMENT_VERDICT_STYLES: Record<ProductAnalysis['requirements'][number]['verdict'], string> = {
+  ok: 'text-emerald',
+  not_ok: 'text-red-600',
+  uncertain: 'text-amber-600',
+}
+
+const REQUIREMENT_VERDICT_LABELS: Record<ProductAnalysis['requirements'][number]['verdict'], string> = {
+  ok: '✅ OK',
+  not_ok: '❌ Not OK',
+  uncertain: '⚠️ Uncertain',
+}
+
+function requirementLabel(requirement: string): string {
+  return DIETARY_REQUIREMENTS.find((d) => d.id === requirement)?.label ?? requirement
+}
+
+function AnalysisCard({ analysis }: { analysis: ProductAnalysis }) {
+  return (
+    <div className="space-y-3 rounded-xl bg-white p-4 shadow">
+      <div className={`rounded-lg p-3 text-center font-semibold ${VERDICT_STYLES[analysis.overallVerdict]}`}>
+        {VERDICT_LABELS[analysis.overallVerdict]}
+      </div>
+      <div className="space-y-2">
+        {analysis.requirements.map((r) => (
+          <div key={r.requirement} className="flex items-start justify-between gap-2 text-sm">
+            <div>
+              <p className="font-medium text-gray-700">{requirementLabel(r.requirement)}</p>
+              <p className="text-xs text-gray-500">{r.reason}</p>
+            </div>
+            <span className={`whitespace-nowrap text-xs font-semibold ${REQUIREMENT_VERDICT_STYLES[r.verdict]}`}>
+              {REQUIREMENT_VERDICT_LABELS[r.verdict]}
+            </span>
+          </div>
+        ))}
+      </div>
+      {analysis.flaggedIngredients.length > 0 && (
+        <p className="text-xs text-gray-500">
+          Flagged ingredients: {analysis.flaggedIngredients.join(', ')}
+        </p>
+      )}
+      <p className="text-xs text-gray-400">Confidence: {Math.round(analysis.confidence * 100)}%</p>
+    </div>
+  )
+}
 
 const STATUS_STYLES: Record<ENumberInfo['status'], string> = {
   halal: 'bg-emerald/10 text-emerald',
@@ -27,9 +86,11 @@ interface LocalProduct {
 
 export default function Scanner() {
   const { session } = useSession()
+  const profile = useAppProfile()
   const [barcode, setBarcode] = useState('')
   const [product, setProduct] = useState<FoodProduct | null>(null)
   const [localProduct, setLocalProduct] = useState<LocalProduct | null>(null)
+  const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [scanning, setScanning] = useState(false)
@@ -38,7 +99,8 @@ export default function Scanner() {
   const [showGuestPrompt, setShowGuestPrompt] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [ocrLoading, setOcrLoading] = useState(false)
-  const [ocrResult, setOcrResult] = useState<string | null>(null)
+  const [ocrAnalysis, setOcrAnalysis] = useState<ProductAnalysis | null>(null)
+  const [ocrIngredients, setOcrIngredients] = useState<string | null>(null)
   const [ocrError, setOcrError] = useState<string | null>(null)
   const scannerRef = useRef<Html5QrcodeScanner | null>(null)
 
@@ -69,6 +131,7 @@ export default function Scanner() {
     setError(null)
     setProduct(null)
     setLocalProduct(null)
+    setAnalysis(null)
     setSaved(false)
 
     let foundLocal: LocalProduct | null = null
@@ -81,6 +144,10 @@ export default function Scanner() {
     } catch {
       // ignore
     }
+
+    scanBarcode(code, profile.dietaryRequirements).then((result) => {
+      if (result) setAnalysis(result.analysis)
+    })
 
     try {
       const result = await fetchProductByBarcode(code)
@@ -145,7 +212,8 @@ export default function Scanner() {
 
   const handleIngredientPhoto = async (file: File) => {
     setOcrError(null)
-    setOcrResult(null)
+    setOcrAnalysis(null)
+    setOcrIngredients(null)
     setOcrLoading(true)
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -155,20 +223,14 @@ export default function Scanner() {
         reader.readAsDataURL(file)
       })
 
-      const res = await fetch('/api/analyse-ingredients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: file.type }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setOcrError(data.error ?? 'Could not analyse ingredients.')
+      const result = await scanPhoto(base64, file.type, profile.dietaryRequirements)
+      if (!result) {
+        setOcrError('Could not analyse ingredients.')
         return
       }
 
-      const data = await res.json()
-      setOcrResult(data.result)
+      setOcrAnalysis(result)
+      setOcrIngredients(result.extractedIngredients)
     } catch (err) {
       setOcrError(err instanceof Error ? err.message : 'Could not analyse ingredients.')
     } finally {
@@ -242,13 +304,17 @@ export default function Scanner() {
         </label>
         {ocrLoading && <p className="text-xs text-gray-500">Analysing ingredients…</p>}
         {ocrError && <p className="text-xs text-red-600">{ocrError}</p>}
-        {ocrResult && (
-          <pre className="whitespace-pre-wrap rounded-lg bg-cream p-2 text-xs text-gray-700">{ocrResult}</pre>
+        {ocrIngredients && (
+          <p className="rounded-lg bg-cream p-2 text-xs text-gray-700">{ocrIngredients || 'No ingredients detected.'}</p>
         )}
       </div>
 
+      {ocrAnalysis && <AnalysisCard analysis={ocrAnalysis} />}
+
       {loading && <p className="text-gray-500">Looking up product…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {analysis && <AnalysisCard analysis={analysis} />}
 
       {localProduct && (
         <div className={`rounded-xl p-4 shadow ${STATUS_STYLES[localProduct.status]}`}>

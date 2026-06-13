@@ -111,6 +111,8 @@ export const userProfiles = pgTable('user_profiles', {
   city: text('city'),
   schoolOfThought: text('school_of_thought'), // hanafi | shafii | general
   usagePurposes: jsonb('usage_purposes').$type<string[]>().notNull().default([]),
+  allergens: jsonb('allergens').$type<string[]>().notNull().default([]),
+  budgetWeekly: integer('budget_weekly'), // AUD
   onboardingComplete: boolean('onboarding_complete').notNull().default(false),
   notificationsEnabled: boolean('notifications_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
@@ -146,6 +148,46 @@ export const productCache = pgTable('product_cache', {
   query: text('query').notNull().unique(),
   results: jsonb('results').notNull(),
   fetchedAt: timestamp('fetched_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+// Cache of Open Food Facts product lookups, enriched with computed dietary analysis.
+export const productsMaster = pgTable('products_master', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  barcode: text('barcode').notNull().unique(),
+  name: text('name').notNull(),
+  brand: text('brand'),
+  imageUrl: text('image_url'),
+  ingredientsText: text('ingredients_text'),
+  allergens: jsonb('allergens').$type<string[]>().notNull().default([]),
+  nutriments: jsonb('nutriments'),
+  dietaryFlags: jsonb('dietary_flags'),
+  source: text('source').notNull().default('openfoodfacts'),
+  lastVerified: timestamp('last_verified', { mode: 'date' }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+export const groceryLists = pgTable('grocery_lists', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  originalQuery: text('original_query').notNull(),
+  items: jsonb('items').notNull(),
+  totalCost: integer('total_cost'), // cents
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+})
+
+export const mealPlans = pgTable('meal_plans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  request: text('request').notNull(),
+  meals: jsonb('meals').notNull(),
+  shoppingList: jsonb('shopping_list').notNull(),
+  totalCost: integer('total_cost'), // cents
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 })
 
 export const feedback = pgTable('feedback', {

@@ -71,7 +71,7 @@ export default function Home() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-emerald-deep">
-          {greetingName ? `Assalamu Alaikum, ${greetingName} 👋` : 'Welcome to MuslimDaily'}
+          {greetingName ? `Assalamu Alaikum, ${greetingName} 👋` : 'Welcome to Halo'}
         </h2>
         <p className="text-sm text-gray-500">
           {hijri.day} {hijri.monthName} {hijri.year} AH ·{' '}

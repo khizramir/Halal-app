@@ -29,7 +29,7 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen flex-col bg-cream">
       <header className="sticky top-0 z-10 flex items-center justify-between bg-emerald-deep px-4 py-3 text-white shadow">
-        <h1 className="text-lg font-semibold">Halal Hub Australia</h1>
+        <h1 className="text-lg font-semibold">Halo</h1>
         <AuthButton />
       </header>
 

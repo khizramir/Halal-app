@@ -213,7 +213,7 @@ export default function Profile() {
       )}
 
       <section className="rounded-xl bg-white p-4 shadow text-sm text-gray-500">
-        <p>MuslimDaily v{APP_VERSION}</p>
+        <p>Halo v{APP_VERSION}</p>
         <p className="mt-1 text-xs">
           Prayer times: AlAdhan API · Halal certification: AFIC, ICCA, Halal Australia · Product data: Open Food Facts
         </p>

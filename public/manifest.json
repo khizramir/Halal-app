@@ -1,11 +1,11 @@
 {
-  "name": "Halal Hub Australia",
-  "short_name": "Halal Hub",
-  "description": "Islamic lifestyle companion for Australian Muslims",
+  "name": "Halo — Eat well. Spend less. No compromise.",
+  "short_name": "Halo",
+  "description": "The smartest AI-powered dietary grocery assistant in Australia",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FAFAF8",
-  "theme_color": "#0F6E56",
+  "theme_color": "#1B4FD8",
   "orientation": "portrait",
   "icons": [
     {
